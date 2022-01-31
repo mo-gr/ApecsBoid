@@ -13,6 +13,7 @@ import Apecs
 import Apecs.Gloss
 import Apecs.TH
 import System.Exit (exitSuccess)
+import Control.Monad (forM_)
 
 newtype Position = Position (Float, Float) deriving (Show)
 
@@ -25,12 +26,12 @@ makeWorld "World" [''Camera, ''Position, ''Velocity, ''Boid]
 
 type System' a = System World a
 
-makeBoid :: (Boid, Position, Velocity)
-makeBoid = (Boid, Position (0, 0), Velocity (10, 10))
+makeBoid :: Float -> (Boid, Position, Velocity)
+makeBoid f = (Boid, Position (f, f), Velocity (f, f))
 
 initialize :: System' ()
 initialize = do
-  newEntity_ makeBoid
+  forM_ [0..10] $ newEntity_ . makeBoid
 
 translate' :: Position -> Picture -> Picture
 translate' (Position (x, y)) = translate x y
