@@ -61,7 +61,7 @@ handleEvent _ = pure ()
 step :: Float -> System' ()
 step dt = do
   centreOfMass 0.1
-  followOthers 0.125
+  followOthers 50 0.125
   avoidCollisions 1
   attractor 5
   clampSpeed 100
@@ -113,17 +113,17 @@ avoidCollisions fac = cmapM $ \(Boid, Position p, Velocity v) -> do
       (dx, dy) | abs dx + abs dy < 15 -> vsub acc (vsub p' p)
       _ -> acc
 
-followOthers :: Float -> System' ()
-followOthers fac = do
+followOthers :: Float -> Float -> System' ()
+followOthers flockDist fac = do
   cmapM
     ( \(Boid, Position p, Velocity v) -> do
-        boidCount <- cfold (\acc Boid -> 1 + acc) 0
-        centre <- vscale (1 / (boidCount - 1)) <$> calcVelocity v
+        boidCount <- cfold (\acc (Boid, Position p') -> if vdist p p' < flockDist then 1 + acc else acc) 0
+        centre <- vscale (1 / (boidCount - 1)) <$> calcVelocity p v
         pure (Boid, Position p, Velocity $ v `vadd` vscale fac centre)
     )
   where
-    calcVelocity :: Vec -> System' Vec
-    calcVelocity vOwn = cfold (\acc (Boid, Velocity v) -> if v /= vOwn then vadd v acc else acc) (0, 0)
+    calcVelocity :: Vec -> Vec -> System' Vec
+    calcVelocity pOwn vOwn = cfold (\acc (Boid, Velocity v, Position p) -> if v /= vOwn && vdist pOwn p < flockDist then vadd v acc else acc) (0, 0)
 
 vadd :: Num a => (a, a) -> (a, a) -> (a, a)
 vadd (x, y) (x', y') = (x + x', y + y')
@@ -136,6 +136,9 @@ vscale s (x, y) = (s * x, s * y)
 
 vclamp :: Float -> Vec -> Vec
 vclamp mx (x, y) = let l = abs x + abs y in if l < mx then (x, y) else vscale (mx / l) (x, y)
+
+vdist :: Vec -> Vec -> Float
+vdist (x, y) (x', y') = abs (x - x') + abs (y -y')
 
 goBoids :: IO ()
 goBoids = do
