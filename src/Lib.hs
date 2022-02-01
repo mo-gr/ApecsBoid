@@ -66,7 +66,7 @@ step dt = do
   avoidCollisions 1
   attractor 5
   applyForce
-  clampSpeed 100
+  clampSpeed 200
   applyVelocity dt
   connectEdges
 
