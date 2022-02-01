@@ -34,12 +34,12 @@ makeWorld "World" [''Camera, ''Position, ''Velocity, ''Boid, ''Attractor, ''Forc
 
 type System' a = System World a
 
-makeBoid :: Float -> (Boid, Position, Velocity, Force)
-makeBoid f = (Boid, Position (sin f * 10, cos f * 10), Velocity (0, 0), Force (0, 0))
+makeBoid :: Vec -> (Boid, Position, Velocity, Force)
+makeBoid v = (Boid, Position v, Velocity (0, 0), Force (0, 0))
 
 initialize :: System' ()
 initialize = do
-  forM_ [0 .. 10] $ newEntity_ . makeBoid
+  forM_ [0 .. 10] $ newEntity_ . makeBoid . \f -> (sin f * 10, cos f * 10)
 
 translate' :: Position -> Picture -> Picture
 translate' (Position (x, y)) = translate x y
@@ -56,12 +56,12 @@ handleEvent (EventKey (MouseButton LeftButton) Down (Modifiers Down _ _) (x, y))
   cmap $ \(Attractor, Position _) -> (Not @(Attractor, Position))
   newEntity_ (Attractor, Position (x, y))
 handleEvent (EventKey (MouseButton RightButton) Down _ _) = cmap $ \(Attractor, Position _) -> (Not @(Attractor, Position))
-handleEvent (EventKey (MouseButton LeftButton) Down (Modifiers Up _ _) (x, y)) = newEntity_ (Boid, Position (x, y), Velocity (0, 0), Force (0,0))
+handleEvent (EventKey (MouseButton LeftButton) Down (Modifiers Up _ _) (x, y)) = newEntity_ $ makeBoid (x, y)
 handleEvent _ = pure ()
 
 step :: Float -> System' ()
 step dt = do
-  centreOfMass 50 0.1
+  centerOfMass 50 0.1
   followOthers 50 0.125
   avoidCollisions 1
   attractor 5
@@ -75,14 +75,14 @@ attractor fac = do
   maybeAttrac <- cfold (\_acc (Attractor, Position p) -> Just p) Nothing
   case maybeAttrac of
     Just attrac ->
-      cmap $ \(Boid, Position p) -> Force $ vclamp fac (attrac `vsub` p)
+      cmap $ \(Boid, Position p, Force f) -> Force $ f `vadd` vclamp fac (attrac `vsub` p)
     Nothing -> pure ()
 
 applyVelocity :: Float -> System' ()
 applyVelocity dt = cmap $ \(Position p, Velocity v) -> Position $ p `vadd` vscale dt v
 
 applyForce :: System' ()
-applyForce = cmap $ \(Velocity v, Force f) -> (Velocity $ v `vadd` f, Force (0,0))
+applyForce = cmap $ \(Velocity v, Force f) -> (Velocity $ v `vadd` f, Force (0, 0))
 
 clampSpeed :: Float -> System' ()
 clampSpeed mx = cmap $ \(Velocity v) -> Velocity (vclamp mx v)
@@ -95,17 +95,31 @@ connectEdges = cmap $ \case
   (Position (x, y)) | y < -250 -> Position (x, 250)
   p -> p
 
-centreOfMass :: Float -> Float -> System' ()
-centreOfMass centreDist fac = do
+centerOfMass :: Float -> Float -> System' ()
+centerOfMass radius fac =
   cmapM
-    ( \(Boid, Position p, Force f) -> do
-        boidCount <- cfold (\acc (Boid, Position p') -> if vdist p p' < centreDist then 1 + acc else acc) 0
-        centre <- vscale (1 / boidCount) <$> calcCentre p
-        pure (Force $ f `vadd` vscale fac (centre `vsub` p))
+    ( \(Boid, Position p, self, Force f) -> do
+        countAndCenter <- calcCenter self (Position p)
+        let center = case countAndCenter of
+              (0, _) -> p
+              (n, centerVec) -> vscale (1 / n) centerVec
+        pure (Force $ f `vadd` vscale fac (center `vsub` p))
     )
   where
-    calcCentre :: Vec -> System' Vec
-    calcCentre pOwn = cfold (\acc (Boid, Position p) -> if p /= pOwn && vdist pOwn p < centreDist then vadd p acc else acc) (0, 0)
+    calcCenter :: Entity -> Position -> System' (Float, Vec)
+    calcCenter self pos =
+      cfold
+        ( \(cnt, acc) (Boid, e, Position p') ->
+            if self /= e && isVisible radius pos (Position p')
+              then (cnt + 1, vadd p' acc)
+              else (cnt, acc)
+        )
+        (0, (0, 0))
+
+isVisible :: Float -> Position -> Position -> Bool
+isVisible radius (Position p) (Position p')
+  | vdist p p' < radius = True
+  | otherwise = False
 
 avoidCollisions :: Float -> System' ()
 avoidCollisions fac = cmapM $ \(Boid, Position p, Force f) -> do
@@ -119,16 +133,24 @@ avoidCollisions fac = cmapM $ \(Boid, Position p, Force f) -> do
       _ -> acc
 
 followOthers :: Float -> Float -> System' ()
-followOthers flockDist fac = do
+followOthers radius fac = do
   cmapM
-    ( \(Boid, Position p, Velocity v, Force f) -> do
-        boidCount <- cfold (\acc (Boid, Position p') -> if vdist p p' < flockDist then 1 + acc else acc) 0
-        centre <- vscale (1 / boidCount) <$> calcVelocity p v
-        pure (Force $ f `vadd` vscale fac centre)
+    ( \(Boid, e, p, Force f) -> do
+        countAndVelocity <- calcVelocity e p
+        case countAndVelocity of
+          (0, _) -> pure (Force f)
+          (n, velo) -> pure (Force $ f `vadd` vscale (fac / n) velo)
     )
   where
-    calcVelocity :: Vec -> Vec -> System' Vec
-    calcVelocity pOwn vOwn = cfold (\acc (Boid, Velocity v, Position p) -> if v /= vOwn && vdist pOwn p < flockDist then vadd v acc else acc) (0, 0)
+    calcVelocity :: Entity -> Position -> System' (Float, Vec)
+    calcVelocity self pos =
+      cfold
+        ( \(count, acc) (Boid, Velocity v, pos', other) ->
+            if self /= other && isVisible radius pos pos'
+              then (count + 1, vadd v acc)
+              else (count, acc)
+        )
+        (0, (0, 0))
 
 vadd :: Num a => (a, a) -> (a, a) -> (a, a)
 vadd (x, y) (x', y') = (x + x', y + y')
