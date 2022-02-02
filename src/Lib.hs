@@ -44,11 +44,15 @@ initialize = do
 translate' :: Position -> Picture -> Picture
 translate' (Position (x, y)) = translate x y
 
+radToDeg :: Float -> Float
+radToDeg r = r * 180 / pi
+
 draw :: System' Picture
 draw = do
-  boids <- foldDraw (\(Boid, pos) -> translate' pos . color white . scale 1 1 $ circleSolid 3)
+  boids <- foldDraw (\(Boid, pos, Velocity (vx, vy)) -> translate' pos . rotate (radToDeg $ atan2 vx vy) . color white . scale 1 1 $ lineLoop [(-2, -2), (2, -2), (0, 4)])
+--  boidVelocities <- foldDraw (\(Boid, Position (x, y), Velocity (vx, vy)) -> translate' (Position (x + vx, y + vy)) . color white . scale 1 1 $ circleSolid 2)
   attractorPic <- foldDraw (\(Attractor, pos) -> translate' pos . color green . scale 1 1 $ circle 3)
-  pure $ boids <> attractorPic
+  pure $ boids <> attractorPic -- <> boidVelocities
 
 handleEvent :: Event -> System' ()
 handleEvent (EventKey (SpecialKey KeyEsc) Down _ _) = liftIO exitSuccess
@@ -66,17 +70,14 @@ step dt = do
   avoidCollisions 1
   attractor 5
   applyForce
-  clampSpeed 100
+  clampSpeed 200
   applyVelocity dt
   connectEdges
 
 attractor :: Float -> System' ()
-attractor fac = do
-  maybeAttrac <- cfold (\_acc (Attractor, Position p) -> Just p) Nothing
-  case maybeAttrac of
-    Just attrac ->
-      cmap $ \(Boid, Position p, Force f) -> Force $ f `vadd` vclamp fac (attrac `vsub` p)
-    Nothing -> pure ()
+attractor fac =
+  cmapM_ $ \(Attractor, Position attrac) ->
+    cmap $ \(Boid, Position p, Force f) -> Force $ f `vadd` vclamp fac (attrac `vsub` p)
 
 applyVelocity :: Float -> System' ()
 applyVelocity dt = cmap $ \(Position p, Velocity v) -> Position $ p `vadd` vscale dt v
