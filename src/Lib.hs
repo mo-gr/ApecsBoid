@@ -68,7 +68,8 @@ step dt = do
   centerOfMass 50 0.1
   followOthers 50 0.125
   avoidCollisions 1
-  attractor 5
+  attractor 15
+  clampForce 50
   applyForce
   clampSpeed 200
   applyVelocity dt
@@ -85,8 +86,9 @@ applyVelocity dt = cmap $ \(Position p, Velocity v) -> Position $ p `vadd` vscal
 applyForce :: System' ()
 applyForce = cmap $ \(Velocity v, Force f) -> (Velocity $ v `vadd` f, Force (0, 0))
 
-clampSpeed :: Float -> System' ()
+clampSpeed, clampForce :: Float -> System' ()
 clampSpeed mx = cmap $ \(Velocity v) -> Velocity (vclamp mx v)
+clampForce mx = cmap $ \(Force v) -> Force (vclamp mx v)
 
 connectEdges :: System' ()
 connectEdges = cmap $ \case
