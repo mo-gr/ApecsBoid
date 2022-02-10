@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Fractal
       Lib
   other-modules:
       Paths_ApecsBoid
@@ -34,6 +35,7 @@ library
       apecs
     , apecs-gloss
     , base >=4.7 && <5
+    , gloss
   default-language: Haskell2010
 
 executable ApecsBoid-exe
@@ -48,6 +50,7 @@ executable ApecsBoid-exe
     , apecs
     , apecs-gloss
     , base >=4.7 && <5
+    , gloss
   default-language: Haskell2010
 
 test-suite ApecsBoid-test
@@ -63,4 +66,5 @@ test-suite ApecsBoid-test
     , apecs
     , apecs-gloss
     , base >=4.7 && <5
+    , gloss
   default-language: Haskell2010
